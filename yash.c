@@ -1,7 +1,9 @@
 /**
-Ctr-c  SIGINT
-Ctrl-z SIGTSTP
-**/
+ *Program Name: yash.c
+ *Author : Ashma Parveen
+ *This program reads the input from the terminal(stdin) and executes commands by creating processes as a shell.
+ *It implements a subset of features supported by a standard shell like bash/zsh.
+ **/
 
 #include <stdio.h>
 #include <readline/readline.h>
@@ -22,8 +24,7 @@ Ctrl-z SIGTSTP
 typedef enum
 {
     RUNNING,
-    STOPPED,
-    DONE
+    STOPPED
 } JobStatus;
 
 struct processList
@@ -69,7 +70,8 @@ char **parsecommands(char *inString);
 void sigChildHandler(int signo);
 int isEmpty(struct jobList *root);
 void checkPrevJobCount(struct jobList **temp);
-void changePrevJobSign(struct jobList **jobRef);
+void assigbJobSign(struct jobList **jobRef);
+int getProcessCount();
 
 struct jobList *rootJob = NULL;
 struct processList *rootProcess = NULL;
@@ -78,14 +80,16 @@ int wpid;
 int wstatus;
 int globalJobNumber = 0;
 
+/** This function checks for empty list**/
 int isEmpty(struct jobList *root)
 {
     return !root;
 }
 
+/** This function is to search the job in the joblist and returns true if present**/
 bool search(struct jobList **headRef, int pid)
 {
-    struct jobList *temp = *headRef, *prev; // Initialize current
+    struct jobList *temp = *headRef, *prev;
     while (temp != NULL)
     {
         if (temp->jobId == pid)
@@ -95,6 +99,7 @@ bool search(struct jobList **headRef, int pid)
     return false;
 }
 
+/** This function creates a list of pids from the job list**/
 int *getPidList(struct jobList **headRef)
 {
     struct jobList *temp = *headRef;
@@ -114,15 +119,16 @@ int *getPidList(struct jobList **headRef)
     return pidlist;
 }
 
+/** This function prints the job done message on the terminal**/
 void printdone(struct jobList *root)
 {
-
     if (root != NULL)
     {
-
-        printf("\n[%d] %s %s\n", root->jobCount, "done", root->jobCommand);
+        printf("\n[%d] %s %s %s\n", root->jobCount, root->jobSign, "Done", root->jobCommand);
     }
 }
+
+/** Handler for SIGCHLD signal sent by the shell to the parent process after termination of child process**/
 void sigChildHandler(int signo)
 {
 
@@ -163,23 +169,24 @@ struct jobList *newNode(int jobId, char *jobCommand, JobStatus jobStatus, int jo
     job->jobStatus = jobStatus;
     job->jobCount = jobCount;
     job->process = process;
-    // job->jobSign = "+";
+    job->jobSign = "+";
     job->next = NULL;
     return job;
 }
 
+/** This function returns the string value of JobStatus enum **/
 const char *getJobsStatus(JobStatus jobStatus)
 {
     switch (jobStatus)
     {
     case RUNNING:
-        return "RUNNING";
+        return "Running";
     case STOPPED:
-        return "STOPPED";
-    case DONE:
-        return "DONE";
+        return "Stopped";
     }
 }
+
+/** This function changes the sign of job from plus to minus**/
 struct jobList *changeJobSign(struct jobList **root)
 {
     struct jobList *temp = *root;
@@ -187,6 +194,7 @@ struct jobList *changeJobSign(struct jobList **root)
     return temp;
 }
 
+/** Function to push the new job in the job list **/
 void pushJob(struct jobList **root, int jobId, char *jobCommand, JobStatus jobStatus, int jobCount, struct processList *process)
 {
     struct jobList *newJob = newNode(jobId, jobCommand, jobStatus, jobCount, process);
@@ -201,9 +209,9 @@ void pushJob(struct jobList **root, int jobId, char *jobCommand, JobStatus jobSt
         // *root = changeJobSign(root);
     }
     *root = newJob;
-    printf("\n%d pushed to stack\n", jobId);
 }
 
+/** Function to pop(remove the job from the top of the list) the job from the job list**/
 struct jobList *popJob(struct jobList **root)
 {
     if (root == NULL)
@@ -215,15 +223,18 @@ struct jobList *popJob(struct jobList **root)
     return temp;
 }
 
+/** This function prints all the jobs with their status, command name, count and sign from the job list on the shell terminal**/
 void printJobs(struct jobList *root)
 {
 
     if (root != NULL)
     {
         printJobs(root->next);
-        printf("\n[%d]%s %s %s\n", root->jobCount, root->jobSign, getJobsStatus(root->jobStatus), root->jobCommand);
+        printf("[%d]%s %s %s\n", root->jobCount, root->jobSign, getJobsStatus(root->jobStatus), root->jobCommand);
     }
 }
+
+/** This function deletes the fisrt available job with the given status from the job list **/
 struct jobList *deleteJobByStatus(struct jobList **headRef, JobStatus jobStatus)
 {
 
@@ -248,6 +259,7 @@ struct jobList *deleteJobByStatus(struct jobList **headRef, JobStatus jobStatus)
     return temp;
 }
 
+/** This function deletes the job with the given pid from the job list **/
 struct jobList *deleteJobByPid(struct jobList **headRef, int pid)
 {
 
@@ -273,11 +285,15 @@ struct jobList *deleteJobByPid(struct jobList **headRef, int pid)
         return NULL;
 
     prev->next = temp->next;
-
+    if (temp->jobCount == globalJobNumber)
+    {
+        checkPrevJobCount(&temp);
+    }
     return temp;
 }
 
-void changePrevJobSign(struct jobList **jobRef)
+/** This function assigns job signs to the jobs before printing them on the terminal**/
+void assigbJobSign(struct jobList **jobRef)
 {
     struct jobList *curNode = *jobRef;
     struct jobList *prevNode = NULL;
@@ -294,19 +310,21 @@ void changePrevJobSign(struct jobList **jobRef)
     }
 }
 
+/**This function updates the globalJobNumber once the job with highest job number gets completed **/
 void checkPrevJobCount(struct jobList **temp)
 {
     struct jobList *prevNode = NULL;
     struct jobList *curNode = *temp;
-
-    while (curNode != NULL)
+    if (curNode->next != NULL)
     {
-        prevNode = curNode;
-        curNode = curNode->next;
+        prevNode = curNode->next;
+        globalJobNumber = prevNode->jobCount;
+    }else{
+        globalJobNumber = 0;
     }
-    
-    globalJobNumber = prevNode->jobCount + 1;
 }
+
+/** This function does the initianlization of the shell and handles the signal for yash **/
 void initshell()
 {
     printf("Welcome to the new YetAnotherShell\n");
@@ -322,10 +340,11 @@ void initshell()
     tcsetpgrp(0, pid);
 }
 
+/**To check if the given command is shell command**/
 int checkIfShellCommands(char *inString)
 {
     int isShellCommands = 1;
-    if (strstr(inString, "bg") || strstr(inString, "fg") || strstr(inString, "jobs"))
+    if (strstr(inString, "bg") || strstr(inString, "fg") || strstr(inString, "jobs") || strstr(inString, "exit"))
     {
         isShellCommands = 0;
         return isShellCommands;
@@ -333,6 +352,8 @@ int checkIfShellCommands(char *inString)
 
     return isShellCommands;
 }
+
+/** Parse the string with the given delimiter**/
 char **parseStringStrtok(char *str, char *delim)
 {
     char **parsedString = NULL;
@@ -354,6 +375,7 @@ char **parseStringStrtok(char *str, char *delim)
     return parsedString;
 }
 
+/**This function is to parse the command for redirection and set inuput/output file parameters in the process list**/
 struct processList *parseSubCommand(char **subCommand)
 {
     int index = 0;
@@ -464,6 +486,8 @@ struct processList *parseSubCommand(char **subCommand)
     return process;
 }
 
+/**This function checks if the given command has a pipe; if yes then parse the left and right child of the command
+ * separatly otherwise pass the entire command at once**/
 struct processList *parseStringforPipes(char **parsedCmdArray)
 {
 
@@ -521,6 +545,24 @@ struct processList *parseStringforPipes(char **parsedCmdArray)
     return parentProcess;
 }
 
+/** This function returns count of process currenlty in execution**/
+int getProcessCount()
+{
+    int count = 0;
+    struct processList *processObj = (struct processList *)
+        malloc(sizeof(struct processList));
+
+    for (processObj = rootProcess; processObj != NULL; processObj = processObj->next)
+    {
+        count++;
+    }
+
+    return count;
+}
+
+/**This function executes the parsed command by using fork and execvp; This function accepts the job type
+ * as a parameter and runs the command
+ * in foreground or background mode depending on that**/
 int exexuteCommands(struct processList *rootProcess, int infd, int outfd, int job_type)
 {
 
@@ -530,7 +572,7 @@ int exexuteCommands(struct processList *rootProcess, int infd, int outfd, int jo
 
     if (cpid < 0)
     {
-        printf("fork problem");
+
         return -1;
     }
 
@@ -600,25 +642,17 @@ int exexuteCommands(struct processList *rootProcess, int infd, int outfd, int jo
             tcsetpgrp(0, rootProcess->groupId);
 
             int waitid = -1;
-            waitid = waitpid(-rootProcess->groupId, &wstatus, WUNTRACED);
-
-            if (waitid == -1)
+            int waitCount = 0;
+            int processCount = getProcessCount();
+            do
             {
-                perror("waitpid");
-                exit(EXIT_FAILURE);
-            }
-            if (WIFEXITED(status))
-            {
-            }
-            else if (WIFSIGNALED(wstatus))
-            {
-                printf("killed by signal %d\n", WTERMSIG(wstatus));
-            }
-            else if (WSTOPSIG(wstatus))
-            {
-                // printf("killed by WSTOPSIG ");
-                pushJob(&rootJob, rootProcess->cpid, rootProcess->processString, STOPPED, ++globalJobNumber, rootProcess);
-            }
+                waitid = waitpid(-rootProcess->groupId, &wstatus, WUNTRACED);
+                waitCount++;
+                if (WIFSTOPPED(wstatus))
+                {
+                    pushJob(&rootJob, rootProcess->cpid, rootProcess->processString, STOPPED, ++globalJobNumber, rootProcess);
+                }
+            } while (waitCount < processCount);
             waitid = status;
 
             signal(SIGTTOU, SIG_IGN);
@@ -627,12 +661,14 @@ int exexuteCommands(struct processList *rootProcess, int infd, int outfd, int jo
         }
         else if (job_type == bg)
         {
-            printf("\npush bg jobs\n");
+
             pushJob(&rootJob, rootProcess->cpid, rootProcess->processString, RUNNING, ++globalJobNumber, rootProcess);
         }
     }
     return status;
 }
+
+/**This function sets the input/output/pipe  parameter before execution**/
 int executeParsedCommand(struct processList *rootProcess, int job_type)
 {
     struct processList *proc;
@@ -680,61 +716,52 @@ int executeParsedCommand(struct processList *rootProcess, int job_type)
     return status;
 }
 
+/**This function executes shell commands like fg/bg/jobs**/
 void executeShellCommands(char *inString)
 {
     char *command = strdup(inString);
     if (strstr(inString, "fg"))
     {
 
-        printf("\nin fg\n");
-
         struct jobList *jobObj =
             (struct jobList *)
                 malloc(sizeof(struct jobList));
-
-        jobObj = popJob(&rootJob);
-        pid_t pid;
-        pid = jobObj->process->groupId;
-
-        usleep(100);
-        if (jobObj->jobStatus != RUNNING)
+        if (!isEmpty(rootJob))
         {
-            printf("[%d] %s %s\n", jobObj->jobCount, "continued", jobObj->jobCommand);
-            kill(-pid, SIGCONT);
-        }
-        else
-        {
-            printf("[%d] %s %s\n", jobObj->jobCount, getJobsStatus(RUNNING), jobObj->jobCommand);
-        }
-        tcsetpgrp(0, pid);
+            jobObj = popJob(&rootJob);
+            pid_t pid;
+            pid = jobObj->process->groupId;
 
-        int status = 0;
+            usleep(100);
+            if (jobObj->jobStatus != RUNNING)
+            {
+                printf("%s\n", jobObj->jobCommand);
+                kill(-pid, SIGCONT);
+            }
+            else
+            {
+                printf("%s\n", jobObj->jobCommand);
+            }
+            tcsetpgrp(0, pid);
 
-        waitpid(pid, &status, WUNTRACED);
+            int status = 0;
 
-        if (WIFEXITED(status))
-        {
-            printf("\nin WIFEXITED");
+            waitpid(pid, &status, WUNTRACED);
+
+            if (WSTOPSIG(status))
+            {
+
+                pushJob(&rootJob, jobObj->process->cpid, jobObj->jobCommand, STOPPED, jobObj->jobCount, jobObj->process);
+                // printf("[%d] %s %s\n", jobObj->jobCount, jobObj->jobSign, jobObj->jobCommand);
+            }
+
+            signal(SIGTTOU, SIG_IGN);
+            tcsetpgrp(0, getpid());
+            signal(SIGTTOU, SIG_DFL);
         }
-        else if (WIFSIGNALED(status))
-        {
-
-            printf("\nin WIFSIGNALED");
-        }
-        else if (WSTOPSIG(status))
-        {
-            printf("\nin WSTOPSIG");
-            pushJob(&rootJob, jobObj->process->cpid, jobObj->jobCommand, STOPPED, jobObj->jobCount, jobObj->process);
-            printf("[%d] %s %s\n", jobObj->jobCount, getJobsStatus(STOPPED), jobObj->jobCommand);
-        }
-
-        signal(SIGTTOU, SIG_IGN);
-        tcsetpgrp(0, getpid());
-        signal(SIGTTOU, SIG_DFL);
     }
     else if (strstr(inString, "bg"))
     {
-        printf("\ninside bg");
 
         struct jobList *jobObj =
             (struct jobList *)
@@ -747,24 +774,24 @@ void executeShellCommands(char *inString)
             int wpid = -1;
             pid_t pid;
             pid = jobObj->process->groupId;
-            printf("pid %d", pid);
+
             kill(-pid, SIGCONT);
-            sleep(1);
+            usleep(100);
             wpid = waitpid(-1, &wstatus, WUNTRACED | WCONTINUED);
             if (WIFCONTINUED(wstatus))
             {
-                printf("\ncontinuing..");
+
                 pushJob(&rootJob, jobObj->process->cpid, jobObj->jobCommand, RUNNING, jobObj->jobCount, jobObj->process);
-                printf("[%d] %s %s\n", jobObj->jobCount, getJobsStatus(RUNNING), jobObj->jobCommand);
+                printf("[%d] %s %s\n", jobObj->jobCount, jobObj->jobSign, jobObj->jobCommand);
             }
         }
     }
     else if (strstr(inString, "jobs"))
     {
-        printf("\njobs list");
+
         if (!isEmpty(rootJob))
         {
-            changePrevJobSign(&rootJob);
+            assigbJobSign(&rootJob);
             printJobs(rootJob);
         }
         else
@@ -772,7 +799,15 @@ void executeShellCommands(char *inString)
             globalJobNumber = 0;
         }
     }
+    else if (strstr(inString, "exit"))
+    {
+        exit(0);
+    }
 }
+
+/**This function checks if the given command is background command, if yes then
+ * removes the & from the cmd string and set bg flag and then parse rest of the command by removing
+ * spaces from the commands and collects token **/
 char **parsecommands(char *inString)
 {
 
@@ -789,7 +824,7 @@ char **parsecommands(char *inString)
 
     if (checkIfShellCommands(inString) == 0)
     {
-        printf("\nprocessing shell commands\n");
+
         executeShellCommands(inString);
     }
     else
@@ -811,25 +846,18 @@ char **parsecommands(char *inString)
     return parsedCommandsArray;
 }
 
-void cmdprompt()
+int main()
 {
+
+    initshell();
     char *inString = (char *)malloc(sizeof(char) * 1000);
-    // inString = strdup("./infinite &");
-    // parsecommands(inString);
-    while ((inString = readline("shell #:")))
+
+    while ((inString = readline("# ")))
     {
-        // // printf("shell #:");
-        // inString = readline("\nshell #:");
+
         if (strlen(inString) != 0)
         {
             parsecommands(inString);
         }
     }
-}
-
-int main()
-{
-
-    initshell();
-    cmdprompt();
 }
